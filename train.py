@@ -36,15 +36,18 @@ def build_dataset(train_text, min_count, sampling_rate):
             if sentence:
                 words.append(sentence)
 
+    # 단어 빈도 수 세기
     word_counter = [['UNK', -1]]
     word_counter.extend(collections.Counter([word for sentence in words for word in sentence]).most_common())
     word_counter = [item for item in word_counter if item[1] >= min_count or item[0] == 'UNK']
 
+    # key가 단어이고 value가 idx인 빈도 수 사전 만들기
     word_dict = dict()
     for word, count in word_counter:
         word_dict[word] = len(word_dict)
     word_reverse_dict = dict(zip(word_dict.values(), word_dict.keys()))
 
+    # key가 단어의 idx이고 value가 pos list인 딕셔너리 만들기
     word_to_pos_li = dict()
     pos_list = list()
     twitter = Twitter()
@@ -56,8 +59,10 @@ def build_dataset(train_text, min_count, sampling_rate):
         word_to_pos_li[word_dict[w]] = w_pos_li
         pos_list += w_pos_li
 
+    # 형태소 빈도 수 세기
     pos_counter = collections.Counter(pos_list).most_common()
 
+    # key가 형태소이고 value가 idx인 딕셔너리 만들기
     pos_dict = dict()
     for pos, _ in pos_counter:
         pos_dict[pos] = len(pos_dict)
@@ -66,12 +71,14 @@ def build_dataset(train_text, min_count, sampling_rate):
 
     word_to_pos_dict = dict()
 
+    # key가 word의 idx이고 value가 형태소의 idx의 list인 딕셔너리 만들기
     for word_id, pos_li in word_to_pos_li.items():
         pos_id_li = list()
         for pos in pos_li:
             pos_id_li.append(pos_dict[pos])
         word_to_pos_dict[word_id] = pos_id_li
 
+    # sentence string에서 idx로 바꾸기
     data = list()
     unk_count = 0
     for sentence in words:
@@ -84,6 +91,7 @@ def build_dataset(train_text, min_count, sampling_rate):
                 unk_count += 1
             s.append(index)
         data.append(s)
+    # UNK 빈도 수 값 치환
     word_counter[0][1] = max(1, unk_count)
 
     data = sub_sampling(data, word_counter, word_dict, sampling_rate)
@@ -95,11 +103,13 @@ def build_dataset(train_text, min_count, sampling_rate):
 def sub_sampling(data, word_counter, word_dict, sampling_rate):
     total_words = sum([len(sentence) for sentence in data])
     prob_dict = dict()
+    # 자주 등장하는 단어일 수록 p가 커짐
     for word, count in word_counter:
         f = count / total_words
         p = max(0, 1 - math.sqrt(sampling_rate / f))
         prob_dict[word_dict[word]] = p
 
+    # random보다 크면 sentence에서 해당 단어를 버림    
     new_data = list()
     for sentence in data:
         s = list()
@@ -141,6 +151,7 @@ def generate_input_output_list(data, window_size):
     output_li = list()
     for sentence in data:
         for i in range(len(sentence)):
+            # IndexError 방지
             for j in range(max(0, i - window_size), min(len(sentence), i + window_size + 1)):
                 if i != j:
                     if sentence[i]!=word_dict['UNK'] and sentence[j]!=word_dict['UNK']:
@@ -188,8 +199,11 @@ with graph.as_default():
 
         word_vec_list = []
         for i in range(batch_size):
+            # words_vec을 pos_vec의 합으로 정의, axis = 0인 게 중요
             word_vec = tf.reduce_sum(tf.nn.embedding_lookup(pos_embeddings, words_matrix[i]), 0)
             word_vec_list.append(word_vec)
+        # stack 왜 하지?
+        # word_embeddigs trainable이든 아니든 variable로 해야 저장 가능
         word_embeddings = tf.stack(word_vec_list)
 
         nce_weights = tf.Variable(
@@ -215,6 +229,7 @@ with graph.as_default():
     similarity = tf.matmul(valid_embeddings, normalized_embeddings, transpose_b=True)
 
 
+# keyed vector 이용하려고 이렇게 하는 거 같음.
 # Function to save vectors.
 def save_model(pos_list, embeddings, file_name):
     with open(file_name, 'w') as f:
