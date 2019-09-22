@@ -1,5 +1,7 @@
+import os
 import re
-import math
+import random
+from datetime import datetime
 
 import numpy as np
 from konlpy.tag import Mecab
@@ -9,156 +11,118 @@ class CommonVar():
     def __init__(self):
         self.word_idx, self.idx_word = {}, {}
         self.pos_idx, self.idx_pos = {}, {}
-        self.word_idx_to_pos_id_list = {}
+        self.word_idx_to_pos_idx_list = {}
         self.inputs, self.targets = [], []
-
+        self.var_names = ['word_idx', 'idx_word', 'pos_idx', 'idx_pos', 
+                          'word_idx_to_pos_idx_list', 'inputs', 'targets']
 
 class Preprocessor(CommonVar):
     def __init__(self):
         super().__init__()
-    
-    def preprocess(self, path, min_count, sampling_rate, window_size):
-        pass
+        self.unk_token = '<UNK>'
+        self.pos_delimeter = '/'
 
-    def save():
-        pass
+    def preprocess(self, path, min_cnt, sampling_rate, window_size, sampling_threshold):
+        sentences = self.get_sentences(path)
+        
+        word_cnts, valid_words, n_total_words = self.get_word_cnts_gt_min_cnt(sentences, min_cnt)
+        sub_sampled_sentences = self.sub_sampling(sentences, word_cnts, sampling_rate, n_total_words, sampling_threshold)
+
+        for i, word in enumerate(valid_words):
+            self.word_idx[word] = i
+            self.idx_word[i] = word
+        
+        self.set_word_idx_to_pos_idx_list(valid_words)
+        self.get_inputs_targets(sub_sampled_sentences, window_size)
+        
+    def save(self, path='/tmp/'):
+        save_dir = f"kor2vec_preprocessed_{datetime.now().strftime('%Y-%m-%d-%H:%M')}"
+        os.makedirs(os.path.join(path, save_dir))
+        
+        for var_name in self.var_names:
+            save_path = os.path.join(path, save_dir, f'{var_name}.npy')
+            np.save(save_path, getattr(self, var_name))
+            print(var_name, 'saved in', save_path)
 
     def get_sentences(self, path):
-        pass
+        sentences = []
+        with open(path, 'r') as f:
+            lines = f.readlines()
+            for line in lines:
+                cleaned = re.sub("[^ㄱ-힣a-zA-Z0-9 .]", '', line).strip()
+                if cleaned:
+                    dot_splited = cleaned.split('.')
+                    for str_sentence in dot_splited:
+                        splited = str_sentence.split()
+                        if splited:
+                            sentences.append(splited)
+        return sentences
 
-    def get_word_freq(self, sentences):
-        pass
-    
-    def set_idx_dict(self, value, value_idx_dict, idx_value_dict):
-        pass
+    def get_word_cnts_gt_min_cnt(self, sentences, min_cnt):
+        flattened = [word for sentence in sentences for word in sentence]
+        counter = bounter(size_mb=4096)
+        counter.update(flattened)
+        
+        array_cnt = np.array(list(counter.iteritems()))
+        array = array_cnt[:, 0]
+        cnts = array_cnt[:, 1]
+        cnts = cnts.astype(int)
 
-    def sub_sampling(self, word_freq, sampling_rate):
-        pass
+        valid = np.where(cnts > min_cnt)
+        valid_array = array[valid]
+        valid_cnts = cnts[valid]
+        word_cnts = list(zip(valid_array, valid_cnts))
+        
+        return word_cnts, valid_array, len(flattened)
 
-    def set_word_idx_to_pos_id_list(self, sub_sampled_sentences):
-        pass
+    def sub_sampling(self, sentences, word_cnts, sampling_rate, n_total_words, sampling_threshold):
+        word_prob = {}
+        for word, cnt in word_cnts:
+            freq = cnt / n_total_words
+            prob = 1 - np.sqrt(sampling_rate / freq)
+            prob = max(0, prob)
+            word_prob[word] = prob
+        
+        sub_sampled_sentences = []
+        for sentence in sentences:
+            sampled_sentence = []
+            for word in sentence:
+                if word not in word_prob:
+                    sampled_sentence.append(self.unk_token)
+                else:
+                    if sampling_threshold > word_prob[word]:
+                        sampled_sentence.append(word)
+            sub_sampled_sentences.append(sampled_sentence)
+        
+        return sub_sampled_sentences            
+
+    def set_word_idx_to_pos_idx_list(self, valid_words):
+        mecab = Mecab()
+        idx = 0
+
+        for word in valid_words:
+            pos_list = mecab.pos(word)
+            pos_idx_list = []
+            for pos in pos_list:
+                joined = self.pos_delimeter.join(pos)
+                if joined not in self.pos_idx:
+                    self.pos_idx[joined] = idx
+                    self.idx_pos[idx] = joined
+                    idx += 1
+                pos_idx_list.append(self.pos_idx[joined])
+            self.word_idx_to_pos_idx_list[self.word_idx[word]] = pos_idx_list
 
     def get_inputs_targets(self, sub_sampled_sentences, window_size):
-        pass
-    
-
-def build_dataset(train_text, min_count, sampling_rate):
-    words = list()
-    with open(train_text, 'r') as f:
-        lines = f.readlines()
-        for line in lines:
-            sentence = re.sub(r"[^ㄱ-힣a-zA-Z0-9]+", ' ', line).strip().split()
-            if sentence:
-                words.append(sentence)
-
-    # 단어 빈도 수 세기
-    word_counter = [['UNK', -1]]
-    word_counter.extend(collections.Counter([word for sentence in words for word in sentence]).most_common())
-    word_counter = [item for item in word_counter if item[1] >= min_count or item[0] == 'UNK']
-
-    # key가 단어이고 value가 idx인 빈도 수 사전 만들기
-    word_dict = dict()
-    for word, count in word_counter:
-        word_dict[word] = len(word_dict)
-    word_reverse_dict = dict(zip(word_dict.values(), word_dict.keys()))
-
-    # key가 단어의 idx이고 value가 pos list인 딕셔너리 만들기
-    word_to_pos_li = dict()
-    pos_list = list()
-    twitter = Twitter()
-    for w in word_dict:
-        w_pos_li = list()
-        for pos in twitter.pos(w, norm=True):
-            w_pos_li.append(pos)
-
-        word_to_pos_li[word_dict[w]] = w_pos_li
-        pos_list += w_pos_li
-
-    # 형태소 빈도 수 세기
-    pos_counter = collections.Counter(pos_list).most_common()
-
-    # key가 형태소이고 value가 idx인 딕셔너리 만들기
-    pos_dict = dict()
-    for pos, _ in pos_counter:
-        pos_dict[pos] = len(pos_dict)
-
-    pos_reverse_dict = dict(zip(pos_dict.values(), pos_dict.keys()))
-
-    word_to_pos_dict = dict()
-
-    # key가 word의 idx이고 value가 형태소의 idx의 list인 딕셔너리 만들기
-    for word_id, pos_li in word_to_pos_li.items():
-        pos_id_li = list()
-        for pos in pos_li:
-            pos_id_li.append(pos_dict[pos])
-        word_to_pos_dict[word_id] = pos_id_li
-
-    # sentence string에서 idx로 바꾸기
-    data = list()
-    unk_count = 0
-    for sentence in words:
-        s = list()
-        for word in sentence:
-            if word in word_dict:
-                index = word_dict[word]
-            else:
-                index = word_dict['UNK']
-                unk_count += 1
-            s.append(index)
-        data.append(s)
-    # UNK 빈도 수 값 치환
-    word_counter[0][1] = max(1, unk_count)
-
-    data = sub_sampling(data, word_counter, word_dict, sampling_rate)
-
-    return data, word_dict, word_reverse_dict, pos_dict, pos_reverse_dict, word_to_pos_dict
-
-
-# Sub-sampling frequent words according to sampling_rate
-def sub_sampling(data, word_counter, word_dict, sampling_rate):
-    total_words = sum([len(sentence) for sentence in data])
-    prob_dict = dict()
-    # 자주 등장하는 단어일 수록 p가 커짐
-    for word, count in word_counter:
-        f = count / total_words
-        p = max(0, 1 - math.sqrt(sampling_rate / f))
-        prob_dict[word_dict[word]] = p
-
-    # random보다 크면 sentence에서 해당 단어를 버림    
-    new_data = list()
-    for sentence in data:
-        s = list()
-        for word in sentence:
-            prob = prob_dict[word]
-            if random.random() > prob:
-                s.append(word)
-        new_data.append(s)
-
-    return new_data
-
-pos_li = []
-for key in sorted(pos_reverse_dict):
-    pos_li.append(pos_reverse_dict[key])
-
-window_size = args.window_size
-batch_size = args.batch_size
-
-def generate_input_output_list(data, window_size):
-    input_li = list()
-    output_li = list()
-    for sentence in data:
-        for i in range(len(sentence)):
-            # IndexError 방지
-            for j in range(max(0, i - window_size), min(len(sentence), i + window_size + 1)):
-                if i != j:
-                    if sentence[i]!=word_dict['UNK'] and sentence[j]!=word_dict['UNK']:
-                        input_li.append(sentence[i])
-                        output_li.append(sentence[j])
-    return input_li, output_li
-
-input_li, output_li = generate_input_output_list(data, window_size)
-input_li_size = len(input_li)
-
+        for sentence in sub_sampled_sentences:
+            for i in range(len(sentence)):
+                start = max(0, i - window_size)
+                end = min(len(sentence), i + window_size + 1)
+                for j in range(start, end):
+                    if i != j and\
+                        sentence[i] in self.word_idx and\
+                        sentence[j] in self.word_idx:
+                        self.inputs.append(self.word_idx[sentence[i]])
+                        self.targets.append(self.word_idx[sentence[j]])    
 
 def generate_batch(iter, batch_size):
     index = (iter % (input_li_size//batch_size)) * batch_size
