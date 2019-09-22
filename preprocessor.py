@@ -22,7 +22,7 @@ class Preprocessor(CommonVar):
         self.unk_token = '<UNK>'
         self.pos_delimeter = '/'
 
-    def preprocess(self, path, min_cnt, sampling_rate, window_size, sampling_threshold):
+    def preprocess(self, path, min_cnt=5, sampling_rate=0.0001, window_size=5, sampling_threshold=0.9):
         sentences = self.get_sentences(path)
         
         word_cnts, valid_words, n_total_words = self.get_word_cnts_gt_min_cnt(sentences, min_cnt)
