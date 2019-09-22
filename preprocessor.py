@@ -124,10 +124,35 @@ class Preprocessor(CommonVar):
                         self.inputs.append(self.word_idx[sentence[i]])
                         self.targets.append(self.word_idx[sentence[j]])    
 
-def generate_batch(iter, batch_size):
-    index = (iter % (input_li_size//batch_size)) * batch_size
-    batch_input = input_li[index:index+batch_size]
-    batch_output_li = output_li[index:index+batch_size]
-    batch_output = [[i] for i in batch_output_li]
 
-    return np.array(batch_input), np.array(batch_output)
+class Loader(CommonVar):
+    def __init__(self):
+        super().__init__()
+    
+    def load(self, path):
+        def _get_loaded_npy(name):
+            loaded = np.load(os.path.join(root, name))
+            if 'idx' in name:
+                loaded = loaded.item()
+            return loaded
+        
+        for root, _, files in os.walk(path):
+            for f in files:
+                var_name = re.sub('.npy', '', f)
+                loaded = _get_loaded_npy(f)
+                setattr(self, var_name, loaded)
+    
+    def get_generator(self, batch_size):
+        data_size = len(self.inputs)
+        if batch_size > data_size:
+            print(f'batch_size({batch_size}) > data_size({data_size}), duplicated batch will exist')
+            replace = True
+        else:
+            replace = False
+        
+        while True:
+            batch_indice = np.random.choice(np.arange(data_size), size=batch_size, replace=replace)
+            batch = []
+            batch.append(self.inputs[batch_indice])
+            batch.append(self.targets[batch_indice])
+            yield batch
