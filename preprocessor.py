@@ -1,3 +1,47 @@
+import re
+import math
+
+import numpy as np
+from konlpy.tag import Mecab
+from bounter import bounter
+
+class CommonVar():
+    def __init__(self):
+        self.word_idx, self.idx_word = {}, {}
+        self.pos_idx, self.idx_pos = {}, {}
+        self.word_idx_to_pos_id_list = {}
+        self.inputs, self.targets = [], []
+
+
+class Preprocessor(CommonVar):
+    def __init__(self):
+        super().__init__()
+    
+    def preprocess(self, path, min_count, sampling_rate, window_size):
+        pass
+
+    def save():
+        pass
+
+    def get_sentences(self, path):
+        pass
+
+    def get_word_freq(self, sentences):
+        pass
+    
+    def set_idx_dict(self, value, value_idx_dict, idx_value_dict):
+        pass
+
+    def sub_sampling(self, word_freq, sampling_rate):
+        pass
+
+    def set_word_idx_to_pos_id_list(self, sub_sampled_sentences):
+        pass
+
+    def get_inputs_targets(self, sub_sampled_sentences, window_size):
+        pass
+    
+
 def build_dataset(train_text, min_count, sampling_rate):
     words = list()
     with open(train_text, 'r') as f:
