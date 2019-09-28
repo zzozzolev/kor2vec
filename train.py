@@ -51,11 +51,6 @@ def main(args):
     save_dir = os.path.join(args.save_path, 'checkpoints')
     if not os.path.isdir(save_dir):
         os.makedirs(save_dir)
-
-    gen = loader.get_generator(args.batch_size)
-    pos_sum_word_model.build_graph()                                
-    save_step = args.max_step // 10
-    print_step = args.max_step // 100
     project_name = ("PosSumWord_"
                     f"batch{args.batch_size}_"
                     f"embed{args.embedding_size}_"
@@ -63,11 +58,26 @@ def main(args):
                     f"min_cnt{args.min_count}_"
                     f"num_sampled{args.num_sampled}_"
                     f"lr{args.learning_rate}")
+    ckpt_save_path = os.path.join(save_dir, f"{project_name}.ckpt")
+
+    gen = loader.get_generator(args.batch_size)
+    pos_sum_word_model.build_graph()                                
     
+    save_step = args.max_step // args.max_to_keep
+    print_step = args.max_step // 100
+    latest_step = 0
+
     with tf.Session(graph=pos_sum_word_model.graph) as session:
         init = tf.global_variables_initializer()
         session.run(init)
-        saver = tf.train.Saver()
+        saver = tf.train.Saver(max_to_keep=args.max_to_keep)
+
+        if args.is_load:
+            latest_ckpt = tf.train.latest_checkpoint(save_dir)
+            assert latest_ckpt != None, "latest_ckpt == None"
+            latest_step = int(latest_ckpt.split("-")[-1])
+            saver.restore(session, latest_ckpt)
+            print(f"{latest_ckpt} loaded")
 
         avg_loss = 0
         for step in range(1, args.max_step+1):
@@ -82,11 +92,10 @@ def main(args):
             if (step) % print_step == 0:
                 if step > 0:
                     avg_loss /= print_step
-                print("Batch Average loss at step ", step, ": ", avg_loss)
+                print("Batch Average loss at step ", step+latest_step, ": ", avg_loss)
 
             if (step) % save_step == 0:
-                ckpt_save_path = os.path.join(save_dir, f"{project_name}.ckpt")
-                saver.save(session, ckpt_save_path, global_step=save_step)
+                saver.save(session, ckpt_save_path, global_step=step+latest_step)
 
         # Save vectors
         save_embeddings(idx_pos=loader.idx_pos, 
@@ -108,6 +117,8 @@ if __name__ == "__main__":
     parser.add_argument("--sampling_threshold", type=float, help="threshold for sampling probability", default=0.9)
     parser.add_argument("--max_step", type=int, help="max train steps")
     parser.add_argument("--batch_size", type=int, help="batch size (default=128)", default=128)
+    parser.add_argument("--max_to_keep", type=int, help="max latest ckpt num to save", default=10)
+    parser.add_argument("--is_load", action='store_true', help="load model ckpt")
 
     args = parser.parse_args()
 
