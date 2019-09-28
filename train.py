@@ -29,7 +29,7 @@ def save_embeddings(idx_pos, embeddings, save_path, project_name, max_step):
     evaled_embeddings = embeddings.eval()
 
     with open(embeddings_save_path, "w") as out:
-        out.write(f"{len(indice)} {evaled_embeddings.shape[1]}\n")
+        out.write(f"{len(idx_pos)} {evaled_embeddings.shape[1]}\n")
         
         for idx, pos in idx_pos.items():
             out.write(" ".join([pos] + list(evaled_embeddings[idx].astype(str))))
