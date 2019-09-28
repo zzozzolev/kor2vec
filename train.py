@@ -1,112 +1,108 @@
+import argparse
+import random
+import os 
+
 import numpy as np
 import tensorflow as tf
-import collections
-from konlpy.tag import Twitter
-import argparse
-import re
-import math
-import random
+from konlpy.tag import Mecab
 
-'''
-    Step 1 : Parse Arguments.
-'''
-parser = argparse.ArgumentParser()
-parser.add_argument("input", type=str, help="input text file for training: one sentence per line")
-parser.add_argument("--embedding_size", type=int, help="embedding vector size (default=150)", default=150)
-parser.add_argument("--window_size", type=int, help="window size (default=5)", default=5)
-parser.add_argument("--min_count", type=int, help="minimal number of word occurences (default=5)", default=5)
-parser.add_argument("--num_sampled", type=int, help="number of negatives sampled (default=50)", default=50)
-parser.add_argument("--learning_rate", type=float, help="learning rate (default=1.0)", default=1.0)
-parser.add_argument("--sampling_rate", type=int, help="rate for subsampling frequent words (default=0.0001)", default=0.0001)
-parser.add_argument("--epochs", type=int, help="number of epochs (default=3)", default=3)
-parser.add_argument("--batch_size", type=int, help="batch size (default=150)", default=150)
+from preprocessor import Loader
+from model import PosSumWord
 
-args = parser.parse_args()
+def get_feed_dict(model, loader, inputs, targets):
+    feed_dict = {}    
+    for placeholder, input_ in zip(model.words_matrix, inputs):
+        feed_dict[placeholder] = loader.word_idx_to_pos_idx_list[input_]
 
+    feed_dict.update(
+                    {
+                        model.inputs: inputs,
+                        model.targets: targets
+                    }
+                )    
 
-data, word_dict, word_reverse_dict, pos_dict, pos_reverse_dict, word_to_pos_dict \
-        = build_dataset(args.input, args.min_count, args.sampling_rate)
+    return feed_dict
 
-vocabulary_size = len(word_dict)
-pos_size = len(pos_dict)
-num_sentences = len(data)
+def save_embeddings(idx_pos, embeddings, save_path, project_name, max_step):
+    embeddings_name = f"{project_name}_max_step{max_step}_morpheme_embeddings.kv"
+    embeddings_save_path = os.path.join(save_path, embeddings_name)
+    evaled_embeddings = embeddings.eval()
 
-print("number of sentences :", num_sentences)
-print("vocabulary size :", vocabulary_size)
-print("pos size :", pos_size)
+    with open(embeddings_save_path, "w") as out:
+        out.write(f"{len(indice)} {evaled_embeddings.shape[1]}\n")
+        
+        for idx, pos in idx_pos.items():
+            out.write(" ".join([pos] + list(evaled_embeddings[idx].astype(str))))
+            out.write("\n")
+    
+    print(f"save {embeddings_name} in {save_path}")
 
-num_iterations = input_li_size // batch_size
-print("number of iterations for each epoch :", num_iterations)
-epochs = args.epochs
-num_steps = num_iterations * epochs + 1
+def main(args):
+    loader = Loader()
 
-# keyed vector 이용하려고 이렇게 하는 거 같음.
-# Function to save vectors.
-def save_model(pos_list, embeddings, file_name):
-    with open(file_name, 'w') as f:
-        f.write(str(len(pos_list)))
-        f.write(" ")
-        f.write(str(embedding_size))
-        f.write("\n")
-        for i in range(len(pos_list)):
-            pos = pos_list[i]
-            f.write(str(pos).replace("', '", "','") + " ")
-            f.write(' '.join(map(str, embeddings[i])))
-            f.write("\n")
+    loader.load(args.preprocessed_path)
+    pos_sum_word_model = PosSumWord(batch_size=args.batch_size,
+                                    vocab_size=len(loader.word_idx),
+                                    pos_size=len(loader.pos_idx),
+                                    embedding_size=args.embedding_size,
+                                    sample_num=args.sample_num,
+                                    learning_rate=args.learning_rate)
+    
+    gen = loader.get_generator(args.batch_size)
+    pos_sum_word_model.build_graph()                                
+    init = tf.global_variables_initializer()
+    save_step = args.max_step // 10
+    print_step = args.max_step // 100
+    project_name = ("PosSumWord_batch_"
+                    f"embed{args.embedding_size}_"
+                    f"window{args.window_size}_"
+                    f"min_cnt{args.min_cnt}_"
+                    f"num_sampled{args.num_sampled}_"
+                    f"lr{args.learning_rate}")
+    saver = tf.train.Saver()
 
-with tf.Session(graph=graph) as session:
-    init.run()
-    print("Initialized - Tensorflow")
+    with tf.Session(graph=pos_sum_word_model.graph) as session:
+        init.run()
+        
+        avg_loss = 0
+        for step in range(args.max_step):
+            inputs, targets = next(gen)
+            feed_dict = get_feed_dict(pos_sum_word_model, loader, inputs, targets)
 
-    average_loss = 0
-    for step in range(num_steps):
-        batch_inputs, batch_labels = generate_batch(step, batch_size)
+            _, loss = session.run([pos_sum_word_model.optimizer, pos_sum_word_model.loss], 
+                                   feed_dict=feed_dict)
+            avg_loss += loss
 
-        word_list = []
-        for word in batch_inputs:
-            word_list.append(word_to_pos_dict[word])
+            if (step + 1) % print_step == 0:
+                if step > 0:
+                    avg_loss /= print_step
+                print("Batch Average loss at step ", step, ": ", avg_loss)
 
-        feed_dict = {}
-        for i in range(batch_size):
-            feed_dict[words_matrix[i]] = word_list[i]
-        feed_dict[train_inputs] = batch_inputs
-        feed_dict[train_labels] = batch_labels
+            if (step + 1) % save_step == 0:
+                ckpt_save_path = os.path.join(args.save_path, 'checkpoints', f"{project_name}.ckpt")
+                saver.save(session, ckpt_save_path)
 
-        _, loss_val = session.run([optimizer, loss], feed_dict=feed_dict)
-        average_loss += loss_val
+        # Save vectors
+        save_embeddings(idx_pos=loader.idx_pos, 
+                        embeddings=pos_sum_word_model.pos_embeddings, 
+                        save_path=args.save_path,
+                        project_name=project_name,
+                        max_step=args.max_step)
 
-        if step % 2000 == 0:
-            if step > 0:
-                average_loss /= 2000
-            print("Average loss at step ", step, ": ", average_loss)
-            average_loss = 0
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser("PosSumWordTrain")
+    parser.add_argument("--preprocessed_path", type=str, help="path for preprocessed data")
+    parser.add_argument("--save_path", type=str, help="path for saving model ckpt and vector", default='/tmp')
+    parser.add_argument("--embedding_size", type=int, help="embedding vector size (default=128)", default=128)
+    parser.add_argument("--window_size", type=int, help="window size (default=3)", default=3)
+    parser.add_argument("--min_count", type=int, help="minimal number of word occurences (default=1)", default=1)
+    parser.add_argument("--num_sampled", type=int, help="number of negatives sampled (default=64)", default=64)
+    parser.add_argument("--learning_rate", type=float, help="learning rate (default=0.0001)", default=0.0001)
+    parser.add_argument("--sampling_rate", type=int, help="rate for subsampling frequent words (default=0.0001)", default=0.0001)
+    parser.add_argument("--sampling_threshold", type=float, help="threshold for sampling probability", default=0.9)
+    parser.add_argument("--max_step", type=int, help="max train steps")
+    parser.add_argument("--batch_size", type=int, help="batch size (default=128)", default=128)
 
-        if step % 20000 == 0:
-            pos_embed = pos_embeddings.eval()
+    args = parser.parse_args()
 
-            # Print nearest words
-            sim = similarity.eval()
-            for i in range(valid_size):
-                valid_pos = pos_reverse_dict[valid_examples[i]]
-                top_k = 8
-                nearest = (-sim[i, :]).argsort()[1:top_k + 1]
-                log_str = 'Nearest to %s:' % str(valid_pos)
-                for k in range(top_k):
-                    close_word = pos_reverse_dict[nearest[k]]
-                    log_str = '%s %s,' % (log_str, str(close_word))
-                print(log_str)
-
-    # Save vectors
-    save_model(pos_li, pos_embeddings.eval(), "pos.vec")
-
-
-
-
-
-
-
-
-
-
-
-
+    main(args)
