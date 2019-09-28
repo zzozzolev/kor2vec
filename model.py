@@ -21,7 +21,7 @@ class PosSumWord():
             with tf.variable_scope(None, default_name=default_name):
                 self.inputs = tf.placeholder(tf.int32, shape=[self.batch_size], name='inputs')
                 self.targets = tf.placeholder(tf.int32, shape=[self.batch_size, 1], name='targets')
-                self.words_matrix = [tf.placeholder(tf.int32, shape=None, name=f'words_matrix{i}') for i in range(self.batch_size)]
+                self.words_matrix = [tf.placeholder(tf.int32, shape=[None], name=f'words_matrix{i}') for i in range(self.batch_size)]
                 
                 self.pos_embeddings = tf.get_variable(name='pos_embeddings',
                                                       shape=[self.pos_size, self.embedding_size],
@@ -32,7 +32,6 @@ class PosSumWord():
                 pos_summed_vectors = []
                 for i in range(self.batch_size):
                     lookuped = tf.nn.embedding_lookup(self.pos_embeddings, self.words_matrix[i])
-                    # axis=0 ?
                     pos_summed = tf.reduce_sum(lookuped, axis=0)
                     pos_summed_vectors.append(pos_summed)
                 
