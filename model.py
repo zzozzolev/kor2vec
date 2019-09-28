@@ -18,7 +18,7 @@ class PosSumWord():
     def build_graph(self, default_name='PosSumWord'):
         self.graph = tf.Graph()
         with self.graph.as_default():
-            with tf.variable_scope(default_name=default_name):
+            with tf.variable_scope(None, default_name=default_name):
                 self.inputs = tf.placeholder(tf.int32, shape=[self.batch_size], name='inputs')
                 self.targets = tf.placeholder(tf.int32, shape=[self.batch_size, 1], name='targets')
                 self.words_matrix = [tf.placeholder(tf.int32, shape=None, name=f'words_matrix{i}') for i in range(self.batch_size)]
