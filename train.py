@@ -50,7 +50,6 @@ def main(args):
     
     gen = loader.get_generator(args.batch_size)
     pos_sum_word_model.build_graph()                                
-    init = tf.global_variables_initializer()
     save_step = args.max_step // 10
     print_step = args.max_step // 100
     project_name = ("PosSumWord_"
@@ -60,11 +59,12 @@ def main(args):
                     f"min_cnt{args.min_count}_"
                     f"num_sampled{args.num_sampled}_"
                     f"lr{args.learning_rate}")
-    saver = tf.train.Saver()
-
+    
     with tf.Session(graph=pos_sum_word_model.graph) as session:
-        init.run()
-        
+        init = tf.global_variables_initializer()
+        session.run(init)
+        saver = tf.train.Saver()
+
         avg_loss = 0
         for step in range(args.max_step):
             inputs, targets = next(gen)
