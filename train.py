@@ -45,7 +45,7 @@ def main(args):
                                     vocab_size=len(loader.word_idx),
                                     pos_size=len(loader.pos_idx),
                                     embedding_size=args.embedding_size,
-                                    sample_num=args.sample_num,
+                                    sample_num=args.num_sampled,
                                     learning_rate=args.learning_rate)
     
     gen = loader.get_generator(args.batch_size)
@@ -53,10 +53,11 @@ def main(args):
     init = tf.global_variables_initializer()
     save_step = args.max_step // 10
     print_step = args.max_step // 100
-    project_name = ("PosSumWord_batch_"
+    project_name = ("PosSumWord_"
+                    f"batch{args.batch_size}_"
                     f"embed{args.embedding_size}_"
                     f"window{args.window_size}_"
-                    f"min_cnt{args.min_cnt}_"
+                    f"min_cnt{args.min_count}_"
                     f"num_sampled{args.num_sampled}_"
                     f"lr{args.learning_rate}")
     saver = tf.train.Saver()
