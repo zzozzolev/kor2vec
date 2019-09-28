@@ -16,8 +16,8 @@ class PosSumWord():
         self.learning_rate = learning_rate
 
     def build_graph(self, default_name='PosSumWord'):
-        graph = tf.Graph()
-        with graph.as_default():
+        self.graph = tf.Graph()
+        with self.graph.as_default():
             with tf.variable_scope(default_name=default_name):
                 self.inputs = tf.placeholder(tf.int32, shape=[self.batch_size], name='inputs')
                 self.targets = tf.placeholder(tf.int32, shape=[self.batch_size, 1], name='targets')
@@ -53,4 +53,4 @@ class PosSumWord():
                                                    num_classes=self.vocab_size))
                 
                 with tf.variable_scope('optimizer'):
-                    self.optimizer = tf.train.AdamOptimizer(self.learning_rate).minimize(loss)
+                    self.optimizer = tf.train.AdamOptimizer(self.learning_rate).minimize(self.loss)
