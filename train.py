@@ -68,6 +68,7 @@ def main(args):
         avg_loss = 0
         for step in range(args.max_step):
             inputs, targets = next(gen)
+            targets = np.expand_dims(targets, 1)
             feed_dict = get_feed_dict(pos_sum_word_model, loader, inputs, targets)
 
             _, loss = session.run([pos_sum_word_model.optimizer, pos_sum_word_model.loss], 
