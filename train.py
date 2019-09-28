@@ -48,6 +48,10 @@ def main(args):
                                     sample_num=args.num_sampled,
                                     learning_rate=args.learning_rate)
     
+    save_dir = os.path.join(args.save_path, 'checkpoints')
+    if not os.path.isdir(save_dir):
+        os.makedirs(save_dir)
+
     gen = loader.get_generator(args.batch_size)
     pos_sum_word_model.build_graph()                                
     save_step = args.max_step // 10
@@ -66,7 +70,7 @@ def main(args):
         saver = tf.train.Saver()
 
         avg_loss = 0
-        for step in range(args.max_step):
+        for step in range(1, args.max_step+1):
             inputs, targets = next(gen)
             targets = np.expand_dims(targets, 1)
             feed_dict = get_feed_dict(pos_sum_word_model, loader, inputs, targets)
@@ -75,14 +79,14 @@ def main(args):
                                    feed_dict=feed_dict)
             avg_loss += loss
 
-            if (step + 1) % print_step == 0:
+            if (step) % print_step == 0:
                 if step > 0:
                     avg_loss /= print_step
                 print("Batch Average loss at step ", step, ": ", avg_loss)
 
-            if (step + 1) % save_step == 0:
-                ckpt_save_path = os.path.join(args.save_path, 'checkpoints', f"{project_name}.ckpt")
-                saver.save(session, ckpt_save_path)
+            if (step) % save_step == 0:
+                ckpt_save_path = os.path.join(save_dir, f"{project_name}.ckpt")
+                saver.save(session, ckpt_save_path, global_step=save_step)
 
         # Save vectors
         save_embeddings(idx_pos=loader.idx_pos, 
